@@ -1,0 +1,14 @@
+package com.reacademix.reacademix_backend.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+
+/**
+ * JPA Auditing 설정
+ * BaseTimeEntity의 @CreatedDate, @LastModifiedDate 활성화
+ */
+@Configuration
+@EnableJpaAuditing
+public class JpaAuditingConfig {
+}
+
