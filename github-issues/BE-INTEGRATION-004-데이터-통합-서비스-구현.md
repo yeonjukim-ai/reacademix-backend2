@@ -4,7 +4,7 @@
 - **Key**: BE-INTEGRATION-004
 - **REQ / Epic**: REQ-FUNC-019
 - **Service**: ReAcademix Backend
-- **Priority**: Medium
+- **Priority**: High
 - **Dependencies**: BE-INTEGRATION-002, BE-INFRA-003
 
 ## 📌 Description
@@ -13,34 +13,141 @@
 
 ## ✅ Acceptance Criteria
 
-- [ ] DataIntegrationService.integrateData() 메서드 구현
+### Service 구현
+- [ ] `DataIntegrationService` 클래스 생성
+- [ ] `integrateData(data, dataType)` 메서드 구현
 - [ ] 학생 ID 기준 데이터 그룹핑
-- [ ] 배치 쓰기 사용 (JPA Batch Insert)
-- [ ] attendance 테이블에 출석 데이터 저장
-- [ ] study_time 테이블에 학습 시간 데이터 저장
-- [ ] mock_exam 테이블에 모의고사 성적 데이터 저장
-- [ ] payment 테이블에 결제 데이터 저장 (선택)
-- [ ] 통합 완료 상태 반환
-- [ ] 저장된 데이터 개수 반환
-- [ ] 학생 ID 없을 시 해당 데이터 건너뛰기
-- [ ] 배치 쓰기 실패 시 부분 실패 처리
-- [ ] 중복 데이터 업데이트 또는 건너뛰기
-- [ ] 데이터 통합 정확도 99% 이상 (REQ-NF-007)
-- [ ] 처리 시간 학원당 평균 2분 이내
+
+### 저장 로직
+- [ ] Batch Insert 사용 (JPA)
+- [ ] 중복 데이터 처리 (Update or Skip)
+- [ ] 데이터 타입별 테이블 저장
+
+### 성능 및 테스트
+- [ ] 처리 시간 2분 이내 (학원당)
+- [ ] 데이터 통합 정확도 99% 이상
 - [ ] 단위 테스트 작성
 
-## 🧩 Technical Notes
+---
 
-- Service 레이어
-- Repository 레이어
-- 관련 테이블: attendance, study_time, mock_exam
+## 💻 구현 코드
 
+### DataIntegrationService.java
+
+```java
+package com.reacademix.reacademix_backend.service;
+
+import com.reacademix.reacademix_backend.domain.attendance.Attendance;
+import com.reacademix.reacademix_backend.domain.student.Student;
+import com.reacademix.reacademix_backend.repository.*;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class DataIntegrationService {
+
+    private final StudentRepository studentRepository;
+    private final AttendanceRepository attendanceRepository;
+    private final StudyTimeRepository studyTimeRepository;
+    private final MockExamRepository mockExamRepository;
+    private final AssignmentRepository assignmentRepository;
+
+    @Transactional
+    public IntegrationResult integrateData(List<Map<String, String>> data, String dataType) {
+        log.info("데이터 통합 시작: type={}, rows={}", dataType, data.size());
+
+        int savedCount = 0;
+        int skippedCount = 0;
+        int errorCount = 0;
+
+        // 학생 코드로 그룹핑
+        Map<String, List<Map<String, String>>> groupedByStudent = data.stream()
+            .collect(Collectors.groupingBy(row -> row.get("studentCode")));
+
+        for (Map.Entry<String, List<Map<String, String>>> entry : groupedByStudent.entrySet()) {
+            String studentCode = entry.getKey();
+            List<Map<String, String>> studentData = entry.getValue();
+
+            Student student = studentRepository.findByStudentCode(studentCode).orElse(null);
+            if (student == null) {
+                log.warn("학생을 찾을 수 없음: studentCode={}", studentCode);
+                skippedCount += studentData.size();
+                continue;
+            }
+
+            try {
+                int saved = saveDataByType(student, studentData, dataType);
+                savedCount += saved;
+            } catch (Exception e) {
+                log.error("데이터 저장 실패: studentCode={}, error={}", studentCode, e.getMessage());
+                errorCount += studentData.size();
+            }
+        }
+
+        log.info("데이터 통합 완료: saved={}, skipped={}, errors={}", 
+            savedCount, skippedCount, errorCount);
+
+        return IntegrationResult.builder()
+            .totalRows(data.size())
+            .savedRows(savedCount)
+            .skippedRows(skippedCount)
+            .errorRows(errorCount)
+            .build();
+    }
+
+    private int saveDataByType(Student student, List<Map<String, String>> data, String dataType) {
+        return switch (dataType) {
+            case "ATTENDANCE" -> saveAttendanceData(student, data);
+            case "STUDY_TIME" -> saveStudyTimeData(student, data);
+            case "MOCK_EXAM" -> saveMockExamData(student, data);
+            case "ASSIGNMENT" -> saveAssignmentData(student, data);
+            default -> throw new IllegalArgumentException("Unknown data type: " + dataType);
+        };
+    }
+
+    private int saveAttendanceData(Student student, List<Map<String, String>> data) {
+        List<Attendance> attendances = data.stream()
+            .map(row -> Attendance.builder()
+                .student(student)
+                .attendanceDate(LocalDate.parse(row.get("date")))
+                .status(AttendanceStatus.valueOf(row.get("status")))
+                .build())
+            .collect(Collectors.toList());
+
+        attendanceRepository.saveAll(attendances);
+        return attendances.size();
+    }
+
+    // 다른 데이터 타입도 유사하게 구현...
+
+    @lombok.Getter
+    @lombok.Builder
+    public static class IntegrationResult {
+        private int totalRows;
+        private int savedRows;
+        private int skippedRows;
+        private int errorRows;
+    }
+}
+```
+
+---
 
 ## ⏱ 일정(Timeline)
 
 - **Start**: 2025-12-08
 - **End**: 2025-12-12
 - **Lane**: Backend Core
+
 ## 🔗 Traceability
 
 - Related SRS: REQ-FUNC-019

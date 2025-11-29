@@ -48,9 +48,10 @@ def create_github_issue(title, body, labels, key):
         body_file = f.name
     
     try:
-        # GitHub CLI 명령 실행
+        # GitHub CLI 명령 실행 (올바른 저장소 지정)
         cmd = [
             'gh', 'issue', 'create',
+            '--repo', 'yeonjukim-ai/reacademix-backend2',
             '--title', title,
             '--body-file', body_file
         ]
@@ -78,6 +79,7 @@ def create_github_issue(title, body, labels, key):
                 print(f"  ⚠️  라벨 에러 감지, 라벨 없이 재시도...")
                 cmd_no_label = [
                     'gh', 'issue', 'create',
+                    '--repo', 'yeonjukim-ai/reacademix-backend2',
                     '--title', title,
                     '--body-file', body_file
                 ]
